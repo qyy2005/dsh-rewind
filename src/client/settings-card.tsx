@@ -35,8 +35,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const CARD_LOCALE_NS = 'rewind'
 
 /**
- * The plugin entry whose form this is: the bundle's package name, which is the
- * profile entry id the host addresses the configuration by.
+ * The plugin entry whose form this is: the bundle's profile row id, the id the
+ * host addresses the configuration by. It is the plain `dsh-rewind-plugin` from
+ * `cordis.patch.yml`, not the scoped package name (`@qyy2005/dsh-rewind`): the
+ * row id is what the settings service keys entries by, and keeping it stable
+ * leaves an installed profile's configuration addressable across the rename.
  */
 export const SETTINGS_ENTRY_ID = 'dsh-rewind-plugin'
 

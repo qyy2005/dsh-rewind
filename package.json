@@ -1,5 +1,5 @@
 {
-  "name": "dsh-rewind-plugin",
+  "name": "@qyy2005/dsh-rewind",
   "version": "0.23.0",
   "description": "In-window conversation rewind with workspace file restore",
   "icon": "./assets/icon.svg",
@@ -14,11 +14,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SiriLee/dsh-rewind.git"
+    "url": "git+https://github.com/qyy2005/dsh-rewind.git"
   },
-  "homepage": "https://github.com/SiriLee/dsh-rewind#readme",
+  "homepage": "https://github.com/qyy2005/dsh-rewind#readme",
   "bugs": {
-    "url": "https://github.com/SiriLee/dsh-rewind/issues"
+    "url": "https://github.com/qyy2005/dsh-rewind/issues"
   },
   "license": "MIT",
   "engines": {

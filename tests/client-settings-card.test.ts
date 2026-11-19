@@ -280,13 +280,16 @@ describe('SettingsCard', () => {
 })
 
 describe('client constants and labels', () => {
-  it('identifies the bundle entry exactly as package.json does', () => {
+  it('identifies the bundle entry exactly as the patch row does', () => {
     // Two consumers depend on this one identity: the profile entry id the host
     // resolves the configuration under, and the `plugins.bundle.config` key the
-    // Plugins page dispatches a bundle's form by.
+    // Plugins page dispatches a bundle's form by. That identity is the patch ROW
+    // id, not the package name: this fork ships as `@qyy2005/dsh-rewind` while
+    // the plain row id stays stable so an installed profile keeps resolving.
     const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { name: string }
-    expect(SETTINGS_ENTRY_ID).toBe(pkg.name)
+    const patch = readFileSync(join(root, 'cordis.patch.yml'), 'utf8')
+    const rowIds = [...patch.matchAll(/^[ \t]*- id: (\S+)$/gmu)].map(match => match[1])
+    expect(rowIds).toContain(SETTINGS_ENTRY_ID)
     expect(SETTINGS_ENTRY_ID).toBe(PLUGIN_PACKAGE)
     expect(SETTINGS_ENTRY_ID).toBe('dsh-rewind-plugin')
   })

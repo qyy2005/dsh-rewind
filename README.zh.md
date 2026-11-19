@@ -4,9 +4,8 @@ DeepSeek Harness 插件：**就地回退对话到任意更早的用户消息**�
 
 [English](README.md) | 中文
 
-[![npm version](https://img.shields.io/npm/v/dsh-rewind-plugin.svg)](https://www.npmjs.com/package/dsh-rewind-plugin)
-[![npm downloads](https://img.shields.io/npm/dt/dsh-rewind-plugin.svg)](https://www.npmjs.com/package/dsh-rewind-plugin)
-[![tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2FSiriLee%2Fdb3b9260351c2b26eb3d201c2ed29df1%2Fraw%2Fbadge.json)](https://github.com/SiriLee/dsh-rewind/actions/workflows/ci.yml)
+> [!NOTE]
+> 本仓库是 [SiriLee/dsh-rewind](https://github.com/SiriLee/dsh-rewind) 的 fork（作者 `qyy2005`），在其之上增加了**编辑并重发**。包名是 `@qyy2005/dsh-rewind`，**尚未发布到 npm**，安装方式见[安装](#安装)。
 
 ![回退到更早的消息，可选一并还原文件](docs/preview.zh.svg)
 
@@ -19,6 +18,8 @@ DeepSeek Harness 插件：**就地回退对话到任意更早的用户消息**�
 ## 效果预览
 
 每条用户消息的操作行都有一个 **↶ 回退** 按钮。点击后弹出模式选择浮层——「**仅回退对话**」或「**回退对话和文件**」，后者会先展示文件变更清单再确认。还可以通过 **`/rewind` 和 `/undo` 命令**便捷地选择和回退。
+
+自己发出的消息上还多一个 **✏ 铅笔**按钮：点开是编辑面板，改完直接撤回这条消息之后的全部对话、按修改后的内容重新发送，不必先回退再把文字搬回输入框（详见[编辑并重发](#编辑并重发)）。
 
 <table>
   <tr>
@@ -33,20 +34,23 @@ DeepSeek Harness 插件：**就地回退对话到任意更早的用户消息**�
 
 ## 安装
 
-**命令行**：
+本 fork **尚未发布到 npm**，`lib/` 也不随 git 提交，所以不能按包名安装，也不能直接从 GitHub 装——先在本地构建，再用 `file:` 路径装进 profile：
 
 ```sh
-dsh plugin --profile <name> add dsh-rewind-plugin
+# 1) 在仓库里构建
+npm install
+npm run build
+
+# 2) 装进 profile（把 <仓库绝对路径> 换成本仓库路径）
+dsh plugin --profile <name> add file:<仓库绝对路径>
 ```
 
-**图形界面**：**插件**页 → **添加插件** → 填入 `dsh-rewind-plugin` → 安装。
+**图形界面**：**插件**页 → **添加插件** → 填入 `file:<仓库绝对路径>` → 安装。
 
-<img src="assets/screenshots/add-plugin.png" width="600" alt="「添加插件」弹窗：在输入框填入 dsh-rewind-plugin"><br>
-
-默认安装适配最新的 DSH 稳定版本。若你的 DSH 版本不同，请在 [Releases](https://github.com/SiriLee/dsh-rewind/releases) 页面找到匹配的插件版本。
+<img src="assets/screenshots/add-plugin.png" width="600" alt="「添加插件」弹窗：在输入框填入插件来源"><br>
 
 > [!WARNING]
-> npm 上的 `dsh-rewind` 属于其他作者，请用 `dsh-rewind-plugin` 安装。
+> 装完必须**完全退出 DSH 再启动**：刷新只重载页面，不会重载插件。兼容的 DSH 版本范围由 `package.json` 的 `engines.dsh` 声明（当前 `>=0.2.2-rc.1 <0.3.0-0`）。
 
 ## 使用
 
@@ -56,6 +60,17 @@ dsh plugin --profile <name> add dsh-rewind-plugin
 
 **键盘操作**：候选列表与模式浮层均支持 ↑↓ 移动、Enter 确认、Esc 取消/返回。
 
+### 编辑并重发
+
+自己发出的消息上，↶ 的右边还有一个 **✏**。点开就是编辑面板：
+
+- 面板预填这条消息的全文，右上角显示该消息的时间。
+- 改完点圆形发送：先按这条消息回退（与 ↶ 走同一条执行路径，只追加遮蔽标记），再把改后的文字作为新的一轮发出——会话 ID 不变，侧边栏不新增会话。
+- 面板底部的 **⟲ 连文件一起回滚 ·N** 胶囊：打开后连同这轮之后记录的文件改动一起回滚（删除新建的文件、还原改过的、恢复删掉的）。没有可还原文件时这颗胶囊不出现。
+- 发送失败时面板不关闭、改好的文字保留，可以直接重试。
+
+键盘：`⌘/Ctrl+Enter` 提交，`Enter` 换行，`Esc` 关闭。只有自己发出的普通消息有铅笔，插话（steering）行只保留 ↶。
+
 <details>
 <summary><b>边界说明</b></summary>
 
@@ -63,6 +78,7 @@ dsh plugin --profile <name> add dsh-rewind-plugin
 - **回退无法原地撤销**——但可以先禁用插件让被撤回的内容重新显示，再在回退前的位置上点「在新对话中分支」，新会话的上下文即可包含这些内容。
 - **插话也能回退**——模型尚未读取的 `steering` 插话消息，同样可作为回退目标，不会打断当前生成。
 - **回退已读消息会打断当前正在运行的回合**——确保回退的安全执行。
+- **编辑重发与回退同一条执行路径**——宿主对回退的准入限制（子代理会话、目标已被压缩遮蔽、当前回合仍在运行）同样作用于编辑重发。
 
 </details>
 

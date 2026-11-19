@@ -49,7 +49,7 @@ async function exists(path: string): Promise<void> {
 
 describe('package layout', () => {
   it('ships every artifact the plugin needs at install time', () => {
-    expect(pkg.name).toBe('dsh-rewind-plugin')
+    expect(pkg.name).toBe('@qyy2005/dsh-rewind')
     expect(pkg.private).not.toBe(true)
     for (const entry of [
       'lib',

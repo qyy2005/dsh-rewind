@@ -4,9 +4,8 @@ DeepSeek Harness plugin: **in-window conversation rewind to any earlier user mes
 
 English | [中文](README.zh.md)
 
-[![npm version](https://img.shields.io/npm/v/dsh-rewind-plugin.svg)](https://www.npmjs.com/package/dsh-rewind-plugin)
-[![npm downloads](https://img.shields.io/npm/dt/dsh-rewind-plugin.svg)](https://www.npmjs.com/package/dsh-rewind-plugin)
-[![tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2FSiriLee%2Fdb3b9260351c2b26eb3d201c2ed29df1%2Fraw%2Fbadge.json)](https://github.com/SiriLee/dsh-rewind/actions/workflows/ci.yml)
+> [!NOTE]
+> This repository is a fork of [SiriLee/dsh-rewind](https://github.com/SiriLee/dsh-rewind) by `qyy2005`, adding **edit-and-resend**. The package is named `@qyy2005/dsh-rewind` and is **not published to npm**; see [Install](#install).
 
 ![Rewind to an earlier message, with optional file restore](docs/preview.svg)
 
@@ -19,6 +18,8 @@ A deliberately focused plugin with one job: **rewind to any user message, no mat
 ## Preview
 
 Every user message carries a **↶ rewind** button in its action row. Clicking it opens a mode-selection popover — "**rewind conversation only**" or "**rewind conversation and files**", the latter showing the file-change list for confirmation first. You can also pick and rewind conveniently via the **`/rewind` and `/undo` commands**.
+
+Your own messages also carry a **✏ pencil** button: open the edit panel, change the text, and the plugin withdraws everything after that message and re-sends the edited text — no need to rewind first and move the text back into the composer (see [Edit and resend](#edit-and-resend)).
 
 <table>
   <tr>
@@ -33,20 +34,23 @@ Every user message carries a **↶ rewind** button in its action row. Clicking i
 
 ## Install
 
-**Command line**:
+This fork is **not published to npm**, and `lib/` is not committed to git, so it cannot be installed by name or straight from GitHub. Build it locally, then install it into a profile via a `file:` path:
 
 ```sh
-dsh plugin --profile <name> add dsh-rewind-plugin
+# 1) build in the repository
+npm install
+npm run build
+
+# 2) install into a profile (replace <repo absolute path> with this checkout)
+dsh plugin --profile <name> add file:<repo absolute path>
 ```
 
-**Graphical interface**: the **Plugins** page → **Add plugin** → enter `dsh-rewind-plugin` → install.
+**Graphical interface**: the **Plugins** page → **Add plugin** → enter `file:<repo absolute path>` → install.
 
-<img src="assets/screenshots/add-plugin.png" width="600" alt="Add plugin dialog: enter dsh-rewind-plugin in the field"><br>
-
-The default install is built for the latest stable DSH release. If you are on a different DSH version, find a matching one in [Releases](https://github.com/SiriLee/dsh-rewind/releases).
+<img src="assets/screenshots/add-plugin.png" width="600" alt="Add plugin dialog: enter the plugin source in the field"><br>
 
 > [!WARNING]
-> The npm name `dsh-rewind` belongs to another author's package — install with `dsh-rewind-plugin`.
+> Fully quit and relaunch DSH after installing — a page refresh reloads the UI but not the plugin. The supported DSH range is declared by `engines.dsh` in `package.json` (currently `>=0.2.2-rc.1 <0.3.0-0`).
 
 ## Usage
 
@@ -56,6 +60,17 @@ The default install is built for the latest stable DSH release. If you are on a 
 
 **Keyboard**: both the candidate picker and the mode popover support ↑↓ to move, Enter to confirm, Esc to cancel/back.
 
+### Edit and resend
+
+Your own messages carry a **✏** to the right of ↶. Clicking it opens the edit panel:
+
+- The panel is prefilled with the message's full text; the message's timestamp sits in the top-right corner.
+- Press the round send button: the plugin first rewinds to that message (the same execution path as ↶ — it only appends mask markers), then sends the edited text as a new turn. The session id does not change and no conversation is added to the sidebar.
+- The **⟲ roll files back too ·N** pill at the bottom of the panel also rolls back the file changes recorded after that turn (new files are deleted, edited files restored, deleted files recovered). The pill is absent when there is nothing to restore.
+- If sending fails, the panel stays open with the edited text intact so you can retry.
+
+Keyboard: `⌘/Ctrl+Enter` sends, `Enter` inserts a newline, `Esc` closes. Only your own ordinary messages get the pencil; `steering` rows keep just ↶.
+
 <details>
 <summary><b>Edge notes</b></summary>
 
@@ -63,6 +78,7 @@ The default install is built for the latest stable DSH release. If you are on a 
 - **A rewind cannot be undone in place** — to carry the content forward, first disable the plugin so the withdrawn content shows again, then click **Branch into a new conversation** on the message just before the rewind; the new conversation's context will include it.
 - **Interruptions rewind too** — a `steering` message the model hasn't read yet is also a valid rewind target, and withdrawing it does not interrupt the current run.
 - **Rewinding a read message interrupts the running turn** — to ensure the rewind runs safely.
+- **Edit-and-resend shares the rewind path** — the host's rewind admission rules (subagent sessions, a target already masked by compaction, a running turn) apply to edit-and-resend as well.
 
 </details>
 

@@ -28,9 +28,13 @@ export const PLUGIN_VERSION: string =
   typeof __DSH_REWIND_VERSION__ === 'string' ? __DSH_REWIND_VERSION__ : 'dev'
 
 /**
- * The bundle's package name — one identity for the client entry id, the
- * `plugins.bundle.config` key and the `<style data-plugin>` marker the
- * harness's owned-style fallback matches; a test pins it to `package.json`.
+ * The bundle's entry (loader row) id — one identity for the client entry id, the
+ * `plugins.bundle.config` key and the `<style data-plugin>` marker the harness's
+ * owned-style fallback matches; it is the row id `cordis.patch.yml` inserts, and
+ * a test pins it there. It stays the plain `dsh-rewind-plugin` while the package
+ * is named `@qyy2005/dsh-rewind`: the row id is independent of the package name
+ * (the row NAME carries the package name), and keeping it stable keeps the
+ * profile entry, the settings card and the style marker addressable.
  */
 export const PLUGIN_PACKAGE = 'dsh-rewind-plugin'
 

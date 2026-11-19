@@ -15,7 +15,11 @@ and the release steps are documented in
 - **消息气泡新增「编辑并重发」**：自己发出的每条消息，↶ 回退按钮右侧多一个铅笔按钮。点开是编辑面板，改完直接撤回这条消息之后的全部对话并按新内容重新发送，不必先回退、再把文字搬回输入框改、再发一次。面板里同样可以选「只回滚消息 / 连文件一起回滚」，文件清单复用回退面板的影响预览（影响清单可展开逐条查看）。发送失败时面板不关闭，改好的文字不会丢。
 - 撤回仍走原来那条「只追加遮蔽标记」的执行路径：不新建会话、不改写日志、会话 ID 不变。铅笔只出现在自己发出的普通消息上，插话（steering）行只保留 ↶。
 
-**Full Changelog**: https://github.com/SiriLee/dsh-rewind/compare/v0.22.2...vNEXT
+### 其他变更
+
+- **包名改为 `@qyy2005/dsh-rewind`。** 本仓库是自己的 fork（上游为 `SiriLee/dsh-rewind`），插件列表里不再与官方的 `dsh-rewind-plugin` 重名。`cordis.patch.yml` 的 row `name` 同步改为新包名；row `id` 仍是 `dsh-rewind-plugin`，已安装 profile 的配置条目、设置卡片与 `<style data-plugin>` 标记继续按原 id 解析，行为与升级前一致。
+
+**Full Changelog**: https://github.com/qyy2005/dsh-rewind/compare/v0.22.2...vNEXT
 
 ## [0.22.2] - 2026-11-14
 
