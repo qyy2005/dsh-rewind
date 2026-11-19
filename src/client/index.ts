@@ -37,12 +37,12 @@ import {
   type CandidateChat,
   type RewindCandidate,
 } from './candidates.ts'
-import { closePopover, openPopover, registerPreviewCall, registerComposerFocuser } from './popover.ts'
+import { closePopover, openEditPopover, openPopover, registerPreviewCall, registerComposerFocuser } from './popover.ts'
 import { installChatViewVisibility } from './visibility.ts'
 import { installRowAction, type RowAction, type SlotLedger } from './mount.tsx'
 import { rewindActionRenderer } from './action.tsx'
 import { createPendingBridge } from './pending-mount.tsx'
-import { isRewindInertSession, runRewindAndFill, writeComposer } from './rewind-flow.ts'
+import { isRewindInertSession, runEditAndResend, runRewindAndFill, writeComposer } from './rewind-flow.ts'
 import { chatSnapshotOf, resolveChatWatch, type ChatOf, type ChatWatch, type MessageImageRef } from './hidden.ts'
 import { candidatesOverApi, previewOverApi } from './host-api.ts'
 import { rewindLog } from './log.ts'
@@ -97,7 +97,7 @@ interface UiConversationLike {
  * package and survives harness version drift.
  */
 interface SessionInputResolverLike {
-  for(actx: unknown): { setDraft(text: string): void; focus(): void }
+  for(actx: unknown): { setDraft(text: string): void; focus(): void; submit(mode?: unknown, source?: 'click' | 'enter'): void }
 }
 
 /**
@@ -232,10 +232,11 @@ export function apply(ctx: ClientContext): void {
     }
 
     /**
-     * The session's composer facade (draft write + focus), resolved lazily
-     * through `ctx.get`; `scope` is reached via `sessions.scope`. Never throws.
+     * The session's composer facade (draft write + focus + submit), resolved
+     * lazily through `ctx.get`; `scope` is reached via `sessions.scope`. Never
+     * throws.
      */
-    const composerFacade = (sessionId: string): { setDraft(text: string): void; focus(): void } | undefined => {
+    const composerFacade = (sessionId: string): { setDraft(text: string): void; focus(): void; submit(): void } | undefined => {
       const conversation = (ctx as { get(name: string): unknown }).get('conversation') as { input?: SessionInputResolverLike } | undefined
       const input = conversation?.input
       const scope = (ctx.sessions as { scope?: (id: SessionId) => unknown }).scope?.(sessionId as SessionId)
@@ -243,6 +244,7 @@ export function apply(ctx: ClientContext): void {
       return {
         setDraft: (draft: string) => { input.for(scope).setDraft(draft) },
         focus: () => { input.for(scope).focus() },
+        submit: () => { input.for(scope).submit() },
       }
     }
 
@@ -336,6 +338,27 @@ export function apply(ctx: ClientContext): void {
         return writeComposer(text, composerFacade(sessionId))
       } catch (error) {
         rewindLog.warn('refill', 'composer write threw', error)
+        return false
+      }
+    }
+
+    /**
+     * The composer send channel: the same `SessionInput` facade's `submit`, i.e.
+     * the harness's own adjudicated send (queue vs steering decided by its input
+     * machine, never by this plugin). Returns false when the facade is
+     * unreachable, so the caller can keep the edited text on screen.
+     */
+    const submitComposer = (sessionId: string): boolean => {
+      const facade = composerFacade(sessionId)
+      if (facade === undefined) {
+        rewindLog.warn('refill', 'composer submit unavailable (conversation services not ready)')
+        return false
+      }
+      try {
+        facade.submit()
+        return true
+      } catch (error) {
+        rewindLog.warn('refill', 'composer submit threw', error)
         return false
       }
     }
@@ -504,12 +527,43 @@ export function apply(ctx: ClientContext): void {
       })
     }
 
+    /** Open the edit-and-resend dialog for one durable user row. */
+    const openEditFor = (row: RowAction, anchor: HTMLElement): void => {
+      const face = sessionOf(row.sessionId)
+      if (face === undefined) {
+        rewindLog.warn('action', 'edit action clicked with no session binding')
+        return
+      }
+      openEditPopover({
+        session: face,
+        seq: row.seq,
+        time: row.time,
+        preview: row.text,
+        anchor,
+        placement: 'below',
+        t,
+        // The dialog keeps itself open until this resolves true: a failed send
+        // must not discard the text the user is editing.
+        onEdit: (text, withFiles) => runEditAndResend(
+          face,
+          row.seq,
+          text,
+          withFiles ? 'both' : 'chat',
+          isMainViewSession,
+          setComposerText,
+          submitComposer,
+          chatOf,
+          watchChat,
+        ),
+      })
+    }
+
     // A failing mount costs the action only: the decoration and the visibility
     // layer above must not share its fate.
     try {
       yield installRowAction({
         slots: ctx.slots as unknown as SlotLedger,
-        render: rewindActionRenderer(t, canRewindIn, openRewindFor),
+        render: rewindActionRenderer(t, canRewindIn, openRewindFor, openEditFor),
       })
     } catch (error) {
       rewindLog.error('action', 'rewind action mount failed', error)

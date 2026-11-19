@@ -14,7 +14,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionFace } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { PreviewOutcome } from '../src/client/host-api.ts'
-import { closePopover, openPopover, registerComposerFocuser, registerPreviewCall, type PopoverOptions } from '../src/client/popover.ts'
+import { closePopover, openEditPopover, openPopover, registerComposerFocuser, registerPreviewCall, type PopoverOptions } from '../src/client/popover.ts'
 import { CLASS } from '../src/client/styles.ts'
 
 /** A session face with the two reads `openPopover` needs at this level. */
@@ -260,5 +260,76 @@ describe('closePopover (the unload teardown)', () => {
     closePopover()
     closePopover()
     expect(stealsArrowDown()).toBe(false)
+  })
+})
+
+describe('openEditPopover (edit and resend)', () => {
+  type EditCall = (text: string, withFiles: boolean) => Promise<boolean>
+
+  /** Open the dialog; the host answer defaults to "sent". */
+  function openEditDialog(onEdit: EditCall = () => Promise.resolve(true), preview?: () => Promise<PreviewOutcome>): EditCall {
+    if (preview !== undefined) registerPreviewCall(() => preview())
+    openEditPopover({ session: fakeSession(), seq: 5, time: 0, preview: 'hello there', anchor: document.body, t, onEdit })
+    return onEdit
+  }
+
+  const field = (): HTMLTextAreaElement => document.querySelector<HTMLTextAreaElement>(`.${CLASS.editInput}`)!
+  const scopeButtons = (): HTMLButtonElement[] => Array.from(document.querySelectorAll<HTMLButtonElement>(`.${CLASS.editScope}`))
+  const primary = (): HTMLButtonElement => document.querySelector<HTMLButtonElement>(`.${CLASS.popoverPrimary}`)!
+
+  it('opens with the message text and keeps the file scope locked without restorable changes', async () => {
+    openEditDialog(undefined, async () => ({ kind: 'success', files: [], backupOff: false }))
+    expect(field().value).toBe('hello there')
+    expect(scopeButtons()[1]!.disabled).toBe(true)
+    await settle()
+    expect(document.querySelector(`.${CLASS.editFiles}`)?.textContent).toContain('edit.files.none')
+    expect(scopeButtons()[1]!.disabled).toBe(true)
+  })
+
+  it('unlocks the file scope and lists the impact when the preview reports changes', async () => {
+    openEditDialog(undefined, async () => ({
+      kind: 'success',
+      files: [{ path: 'a.ts', action: 'restore' }, { path: 'b.ts', action: 'delete' }],
+      backupOff: false,
+    }))
+    await settle()
+    expect(scopeButtons()[1]!.disabled).toBe(false)
+    expect(document.querySelector(`.${CLASS.editFiles}`)?.textContent).toContain('edit.files.count')
+    expect(document.querySelector(`.${CLASS.editFileList}`)?.textContent).toContain('popover.impact.restore:a.ts')
+  })
+
+  it('sends the edited text with the chosen scope and closes once it lands', async () => {
+    const onEdit = vi.fn((_text: string, _withFiles: boolean): Promise<boolean> => Promise.resolve(true))
+    openEditDialog(onEdit, async () => ({
+      kind: 'success',
+      files: [{ path: 'a.ts', action: 'restore' }],
+      backupOff: false,
+    }))
+    await settle()
+    field().value = 'edited text'
+    scopeButtons()[1]!.click()
+    primary().click()
+    await settle()
+    expect(onEdit).toHaveBeenCalledWith('edited text', true)
+    expect(document.querySelector(`.${CLASS.popover}`)).toBeNull()
+  })
+
+  it('refuses an empty message without calling the host', () => {
+    const onEdit = vi.fn((_text: string, _withFiles: boolean): Promise<boolean> => Promise.resolve(true))
+    openEditDialog(onEdit, async () => ({ kind: 'success', files: [], backupOff: false }))
+    field().value = '   '
+    primary().click()
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(document.querySelector(`.${CLASS.editError}`)?.textContent).toBe('edit.empty')
+  })
+
+  it('keeps the dialog and the typed text when the host cannot send', async () => {
+    openEditDialog(() => Promise.resolve(false), async () => ({ kind: 'success', files: [], backupOff: false }))
+    field().value = 'edited text'
+    primary().click()
+    await settle()
+    expect(document.querySelector(`.${CLASS.popover}`)).not.toBeNull()
+    expect(field().value).toBe('edited text')
+    expect(document.querySelector(`.${CLASS.editError}`)?.textContent).toBe('edit.sendFailed')
   })
 })

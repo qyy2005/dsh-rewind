@@ -566,3 +566,220 @@ export function openPopover(opts: PopoverOptions): void {
     renderModes()
   })
 }
+
+/** Options for the edit-and-resend dialog: the whisper of a composer, per message. */
+export interface EditPopoverOptions {
+  readonly session: SessionFace
+  /** The target user message seq. */
+  readonly seq: number
+  /** The target message time, epoch ms. */
+  readonly time: number
+  /** The message text the textarea opens with (the row's joined Copy text). */
+  readonly preview: string
+  /** The pencil button the dialog is positioned against. */
+  readonly anchor: HTMLElement
+  /** Preferred side of the anchor; defaults to below (the row sits above the composer). */
+  readonly placement?: 'above' | 'below'
+  readonly t: Translate
+  /**
+   * Withdraw from `seq` and send `text` (restoring files too when `withFiles`).
+   * Resolves true once the edited text went out; false leaves the dialog open so
+   * the user keeps the text they typed.
+   */
+  readonly onEdit: (text: string, withFiles: boolean) => Promise<boolean>
+}
+
+/** The close glyph (the dialog owns its own chrome; the row already says where). */
+const CLOSE_GLYPH = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">'
+  + '<path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>'
+
+/** Greedy autosize between the panel's two height bounds. */
+function autosize(input: HTMLTextAreaElement): void {
+  input.style.height = 'auto'
+  input.style.height = `${Math.min(240, Math.max(84, input.scrollHeight))}px`
+}
+
+/**
+ * Open the edit-and-resend dialog: one textarea holding the target message, the
+ * same two file scopes the rewind popover offers, and a primary that withdraws
+ * every later turn and sends the edited text.
+ *
+ * The dialog stays mounted while the host works (the button reads as sending and
+ * the fields lock): an edit is an authoring act, so a failure must never throw
+ * away what the user typed.
+ */
+export function openEditPopover(opts: EditPopoverOptions): void {
+  closePopover()
+  const { session, seq, anchor, t, preview } = opts
+  markOpen(anchor)
+  liveSessionId = session.sessionId
+
+  const root = el('div', `${CLASS.popover} ${CLASS.edit}`)
+  root.setAttribute('role', 'dialog')
+  root.setAttribute('aria-label', t('edit.title'))
+
+  const header = el('div', CLASS.editHeader)
+  const close = document.createElement('button')
+  close.type = 'button'
+  close.className = CLASS.editClose
+  close.setAttribute('aria-label', t('popover.cancel'))
+  close.innerHTML = CLOSE_GLYPH
+  close.addEventListener('click', () => closePopover())
+  header.append(el('div', CLASS.popoverTitle, t('edit.title')), close)
+
+  const input = document.createElement('textarea')
+  input.className = CLASS.editInput
+  input.value = preview
+  input.rows = 3
+  input.spellcheck = false
+  input.setAttribute('aria-label', t('edit.title'))
+  input.addEventListener('input', () => autosize(input))
+
+  // File scope: the rewind popover's two modes, compressed into one segmented
+  // control. Disabled until the preview says there is something to restore.
+  const scopes = el('div', CLASS.editScopes)
+  scopes.setAttribute('role', 'group')
+  let withFiles = false
+  const scopeButton = (label: string, pressed: boolean): HTMLButtonElement => {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = CLASS.editScope
+    button.textContent = label
+    button.setAttribute('aria-pressed', String(pressed))
+    return button
+  }
+  const chatButton = scopeButton(t('edit.scope.chat'), true)
+  const bothButton = scopeButton(t('edit.scope.both'), false)
+  bothButton.disabled = true
+  const select = (files: boolean): void => {
+    withFiles = files
+    chatButton.setAttribute('aria-pressed', String(!files))
+    bothButton.setAttribute('aria-pressed', String(files))
+  }
+  chatButton.addEventListener('click', () => select(false))
+  bothButton.addEventListener('click', () => select(true))
+  scopes.append(chatButton, bothButton)
+
+  const files = document.createElement('details')
+  files.className = CLASS.editFiles
+  const filesSummary = document.createElement('summary')
+  filesSummary.textContent = t('edit.files.loading')
+  files.append(filesSummary)
+  const fileList = document.createElement('ul')
+  fileList.className = CLASS.editFileList
+
+  const error = el('div', CLASS.editError)
+  error.hidden = true
+  const note = el('div', CLASS.editNote, t('edit.hint'))
+
+  const actions = el('div', CLASS.popoverActions)
+  const cancel = document.createElement('button')
+  cancel.type = 'button'
+  cancel.className = CLASS.popoverGhost
+  cancel.textContent = t('popover.cancel')
+  cancel.addEventListener('click', () => closePopover())
+  const submit = document.createElement('button')
+  submit.type = 'button'
+  submit.className = CLASS.popoverPrimary
+  submit.textContent = t('edit.submit')
+  actions.append(cancel, submit)
+
+  root.append(header, input, scopes, files, note, error, actions)
+
+  /** Lock or unlock the dialog while one submit is in flight. */
+  const busy = (sending: boolean): void => {
+    input.readOnly = sending
+    close.disabled = sending
+    cancel.disabled = sending
+    chatButton.disabled = sending
+    bothButton.disabled = sending || bothButton.dataset['restorable'] !== 'true'
+    submit.disabled = sending
+    submit.textContent = sending ? t('edit.sending') : t('edit.submit')
+  }
+
+  /** Surface one refusal above the footer without closing the dialog. */
+  const refuse = (text: string): void => {
+    error.textContent = text
+    error.hidden = false
+  }
+
+  let sending = false
+  const doSubmit = (): void => {
+    if (sending) return
+    const text = input.value.trim()
+    if (text === '') {
+      refuse(t('edit.empty'))
+      input.focus()
+      return
+    }
+    error.hidden = true
+    sending = true
+    busy(true)
+    void opts.onEdit(text, withFiles).then(sent => {
+      if (sent) {
+        closePopover()
+        return
+      }
+      sending = false
+      busy(false)
+      refuse(t('edit.sendFailed'))
+    }).catch(() => {
+      sending = false
+      busy(false)
+      refuse(t('edit.sendFailed'))
+    })
+  }
+  submit.addEventListener('click', doSubmit)
+
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      closePopover()
+      return
+    }
+    // Enter is a newline here; the send chord is the dialog's own accelerator.
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+      event.preventDefault()
+      event.stopPropagation()
+      doSubmit()
+    }
+  }
+
+  const shell = mountShell(root, anchor, onKeyDown, opts.placement ?? 'below')
+  popoverEl = root
+  disposeOutside = shell.dispose
+  input.focus()
+  input.setSelectionRange(input.value.length, input.value.length)
+  autosize(input)
+
+  // Resolve the file scope from the same host preview the rewind popover uses.
+  void (async () => {
+    const outcome = await previewImpact(session.sessionId, seq)
+    if (!root.isConnected) return
+    if (outcome === null) {
+      filesSummary.textContent = t('edit.files.failed', { message: 'preview request timed out' })
+      return
+    }
+    if (outcome.kind === 'error') {
+      filesSummary.textContent = t('edit.files.failed', { message: outcome.text })
+      return
+    }
+    if (outcome.files.length === 0) {
+      filesSummary.textContent = t('edit.files.none')
+      return
+    }
+    filesSummary.textContent = t('edit.files.count', { count: outcome.files.length })
+    fileList.replaceChildren(...outcome.files.map(file => el(
+      'li',
+      '',
+      file.action === 'restore' ? t('popover.impact.restore', { path: file.path }) : t('popover.impact.delete', { path: file.path }),
+    )))
+    files.append(fileList)
+    if (outcome.backupOff) files.append(el('div', CLASS.popoverNote, t('popover.backupDisabled')))
+    bothButton.dataset['restorable'] = 'true'
+    bothButton.disabled = false
+  })().catch(() => {
+    if (root.isConnected) filesSummary.textContent = t('edit.files.failed', { message: 'unexpected error' })
+  })
+}

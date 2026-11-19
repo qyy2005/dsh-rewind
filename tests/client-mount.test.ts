@@ -134,8 +134,40 @@ describe('row takeover', () => {
     expect(button?.dataset['tooltip']).toBe('button.title')
     act(() => { button!.click() })
     expect(opened).toHaveLength(1)
-    expect(opened[0]!.row).toEqual({ sessionId: 's1', seq: 7, time: 1_700_000_000_000, text: ROW_TEXT })
+    expect(opened[0]!.row).toEqual({ sessionId: 's1', seq: 7, time: 1_700_000_000_000, text: ROW_TEXT, kind: 'user' })
     expect(opened[0]!.anchor).toBe(button)
+    dispose()
+  })
+
+  it('appends the edit action behind the rewind action on a durable user row', () => {
+    const ledger = new FakeLedger([{ component: officialRow, options: { key: 'user' } }])
+    const edited: RowAction[] = []
+    const dispose = installRowAction({
+      slots: ledger,
+      render: rewindActionRenderer(t, () => true, () => {}, (row) => { edited.push(row) }),
+    })
+    const container = render(ledger.store[0]!.component)
+    // The rewind keeps its seat; the pencil follows it in the same row.
+    expect(actionOrder(container)).toEqual(['copy', 'action', 'action'])
+    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>(`button.${CLASS.action}`))
+    expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['button.aria', 'edit.button.aria'])
+    expect(buttons[1]!.dataset['tooltip']).toBe('edit.button.title')
+    act(() => { buttons[1]!.click() })
+    expect(edited).toHaveLength(1)
+    expect(edited[0]!.kind).toBe('user')
+    dispose()
+  })
+
+  it('leaves the pencil off a steering row', () => {
+    const ledger = new FakeLedger([{ component: officialRow, options: { key: 'steering' } }])
+    const dispose = installRowAction({
+      slots: ledger,
+      render: rewindActionRenderer(t, () => true, () => {}, () => {}),
+    })
+    const container = render(ledger.store[0]!.component, rowProps({
+      node: { kind: 'steering', data: { seq: 7, time: 1_700_000_000_000 } },
+    }))
+    expect(actionOrder(container)).toEqual(['copy', 'action'])
     dispose()
   })
 

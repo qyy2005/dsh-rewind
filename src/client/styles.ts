@@ -23,6 +23,18 @@ export const CLASS = {
   popoverPrimary: 'dsh-rewind-popover-primary',
   popoverGhost: 'dsh-rewind-popover-ghost',
   guardHint: 'dsh-rewind-guard-hint',
+  edit: 'dsh-rewind-edit',
+  editHeader: 'dsh-rewind-edit-header',
+  editClose: 'dsh-rewind-edit-close',
+  editQuote: 'dsh-rewind-edit-quote',
+  editInput: 'dsh-rewind-edit-input',
+  editScopes: 'dsh-rewind-edit-scopes',
+  editScope: 'dsh-rewind-edit-scope',
+  editFiles: 'dsh-rewind-edit-files',
+  editFileList: 'dsh-rewind-edit-file-list',
+  editFoot: 'dsh-rewind-edit-foot',
+  editNote: 'dsh-rewind-edit-note',
+  editError: 'dsh-rewind-edit-error',
 } as const
 
 /** One injected stylesheet (scoped under `.dsh-rewind-*`). */
@@ -263,6 +275,173 @@ export const STYLE = `
 }
 .dsh-rewind-popover-ghost:active {
   background: var(--dsw-alias-interactive-bg-active);
+}
+
+/* ---- Edit-and-resend dialog ----
+   A composing surface rather than a choice list, so the panel is wider than the
+   rewind popover and the input, not the title, owns the top of the eye path. */
+.dsh-rewind-popover.dsh-rewind-edit {
+  min-width: min(420px, calc(100vw - 24px));
+  max-width: min(420px, calc(100vw - 24px));
+  padding: 14px;
+}
+.dsh-rewind-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dsh-rewind-edit-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.dsh-rewind-edit-close:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+}
+.dsh-rewind-edit-close:focus-visible {
+  outline: 2px solid var(--dsw-alias-button-primary-fill);
+  outline-offset: 1px;
+}
+.dsh-rewind-edit-input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 84px;
+  max-height: 240px;
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 5%, transparent);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  line-height: 20px;
+  resize: none;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+.dsh-rewind-edit-input:focus {
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 3%, transparent);
+  border-color: color-mix(in srgb, var(--dsw-alias-button-primary-fill) 55%, var(--dsw-alias-border-l1));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-button-primary-fill) 18%, transparent);
+}
+.dsh-rewind-edit-input::placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+.dsh-rewind-edit-scopes {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 7%, transparent);
+}
+.dsh-rewind-edit-scope {
+  flex: 1;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+.dsh-rewind-edit-scope:hover:not([aria-pressed='true']) {
+  color: var(--dsw-alias-label-secondary);
+}
+.dsh-rewind-edit-scope[aria-pressed='true'] {
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-3));
+  color: var(--dsw-alias-label-primary);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.16), inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent);
+}
+.dsh-rewind-edit-scope:focus-visible {
+  outline: 2px solid var(--dsw-alias-button-primary-fill);
+  outline-offset: 1px;
+}
+.dsh-rewind-edit-scope:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.dsh-rewind-edit-files {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.dsh-rewind-edit-files > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  max-width: 100%;
+  padding: 2px 0;
+  list-style: none;
+  cursor: pointer;
+}
+.dsh-rewind-edit-files > summary::-webkit-details-marker {
+  display: none;
+}
+.dsh-rewind-edit-files > summary::before {
+  content: '';
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin-left: 2px;
+  border-right: 1.4px solid currentColor;
+  border-bottom: 1.4px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+.dsh-rewind-edit-files[open] > summary::before {
+  transform: rotate(45deg);
+}
+.dsh-rewind-edit-file-list {
+  margin: 6px 0 0;
+  padding: 6px 0 0 13px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  max-height: 132px;
+  overflow: auto;
+  list-style: none;
+}
+.dsh-rewind-edit-file-list li {
+  display: flex;
+  gap: 6px;
+  padding: 1px 0;
+  color: var(--dsw-alias-label-secondary);
+  word-break: break-all;
+}
+.dsh-rewind-edit-note {
+  margin-top: 10px;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.dsh-rewind-edit-error {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-danger, #e5484d);
+}
+.dsh-rewind-edit .dsh-rewind-popover-actions {
+  margin-top: 12px;
+}
+.dsh-rewind-edit .dsh-rewind-popover-primary {
+  min-width: 88px;
 }
 
 .dsh-rewind-guard-hint {

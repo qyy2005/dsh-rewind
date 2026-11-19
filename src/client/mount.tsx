@@ -52,6 +52,11 @@ export interface RowAction {
   readonly time: number
   /** The row's joined text — the Copy target, known only when the actions row is built. */
   readonly text: string
+  /**
+   * Node kind of the row. Only a durable `user` row can be edited and resent;
+   * a claimed `steering` row shares the renderer but offers the rewind only.
+   */
+  readonly kind: 'user' | 'steering'
 }
 
 /** Build the action element for one row; `null` leaves the actions row untouched. */
@@ -97,9 +102,15 @@ function rendererOf(component: unknown): Renderer | undefined {
 /** Read the row's addressing fields, or undefined when the node shape is not the expected one. */
 function targetOf(props: Record<string, unknown>): Omit<RowAction, 'text'> | undefined {
   const sessionId = props['sessionId']
-  const data = (props['node'] as { readonly data?: { readonly seq?: unknown; readonly time?: unknown } } | undefined)?.data
+  const node = props['node'] as { readonly kind?: unknown; readonly data?: { readonly seq?: unknown; readonly time?: unknown } } | undefined
+  const data = node?.data
   if (typeof sessionId !== 'string' || typeof data?.seq !== 'number' || typeof data.time !== 'number') return undefined
-  return { sessionId, seq: data.seq, time: data.time }
+  return {
+    sessionId,
+    seq: data.seq,
+    time: data.time,
+    kind: node?.kind === 'steering' ? 'steering' : 'user',
+  }
 }
 
 /**

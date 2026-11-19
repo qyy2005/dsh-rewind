@@ -116,6 +116,69 @@ export function writeComposer(text: string, facade: ComposerDraftWriter | undefi
 }
 
 /**
+ * Execute one rewind command and settle on its outcome. Shared by the refill
+ * flow (rewind → put the withdrawn text back) and the edit flow (rewind → send
+ * the edited text), so both wait on exactly the same executed marker.
+ * @returns whether the rewind reached a successful execution.
+ */
+async function executeRewind(
+  session: SessionFace,
+  seq: number,
+  mode: 'chat' | 'both',
+  chatOf: ChatOf,
+  watchChat: ChatWatch,
+): Promise<boolean> {
+  // Exclude already-present executed-rewind nodes for this target BEFORE
+  // issuing the command: a repeated rewind of the same message must wait
+  // for THIS command's node, not settle on the previous one.
+  const known = knownCommandSeqs(session, chatOf, node => isExecutedRewindCommand(node, seq))
+  let result: Awaited<ReturnType<SessionFace['command']>>
+  try {
+    result = await session.command(`/${ENGINE_COMMAND} @${seq} ${mode}`)
+  } catch (error) {
+    // A command/teardown throw must never become a silent unhandled rejection
+    // on the `void runRewindAndFill(...)` call site.
+    rewindLog.warn('refill', `rewind command threw, skipping refill @${seq}`, error)
+    return false
+  }
+  if (!result.ok) {
+    // The Host rejected the call before any handler ran — e.g. a
+    // subagent-owned identity (`session/agent-busy`, "use subagent delivery"),
+    // or a command this Host does not have. Nothing was rewound: say so in the
+    // console instead of failing silently (SiriLee/dsh-rewind#26).
+    rewindLog.warn('refill', `rewind command rejected for @${seq}`, result.error)
+    return false
+  }
+  if (result.value?.matched !== true) {
+    rewindLog.warn('refill', `rewind command was not matched for @${seq}`)
+    return false
+  }
+  // The executed rewind lands as a CommandNode with a marker-carrying
+  // success outcome; wait for exactly that (longer than the preview route
+  // timeout: a running turn is cancelled first, which can take seconds).
+  let outcome: Awaited<ReturnType<typeof waitForCommand>>
+  try {
+    outcome = await waitForCommand(session, chatOf, node => isExecutedRewindCommand(node, seq) && !known.has(node.seq), 20_000, cb => watchChat(session.sessionId, cb))
+  } catch (error) {
+    rewindLog.warn('refill', `waiting for rewind @${seq} outcome threw`, error)
+    return false
+  }
+  if (outcome === null) {
+    rewindLog.warn('refill', `rewind @${seq} never settled within timeout, no refill`)
+    return false
+  }
+  if (outcome.kind !== 'success') {
+    // The host rejected the rewind (e.g. the target was shadowed by
+    // compaction and is no longer in the model context). The refusal is the
+    // correct behavior, but it must not fail silently — surface the host's
+    // reason instead.
+    showHint(outcome.text ?? 'rewind failed')
+    return false
+  }
+  return true
+}
+
+/**
  * Execute one rewind and, when it settles successfully, put the withdrawn
  * target message's text back into the composer so the user can edit and
  * re-send.
@@ -130,53 +193,7 @@ export async function runRewindAndFill(
   setComposerText: (sessionId: string, text: string) => boolean,
   restoreImages?: (sessionId: string, images: readonly MessageImageRef[]) => Promise<void>,
 ): Promise<void> {
-  // Exclude already-present executed-rewind nodes for this target BEFORE
-  // issuing the command: a repeated rewind of the same message must wait
-  // for THIS command's node, not settle on the previous one.
-  const known = knownCommandSeqs(session, chatOf, node => isExecutedRewindCommand(node, seq))
-  let result: Awaited<ReturnType<SessionFace['command']>>
-  try {
-    result = await session.command(`/${ENGINE_COMMAND} @${seq} ${mode}`)
-  } catch (error) {
-    // A command/teardown throw must never become a silent unhandled rejection
-    // on the `void runRewindAndFill(...)` call site.
-    rewindLog.warn('refill', `rewind command threw, skipping refill @${seq}`, error)
-    return
-  }
-  if (!result.ok) {
-    // The Host rejected the call before any handler ran — e.g. a
-    // subagent-owned identity (`session/agent-busy`, "use subagent delivery"),
-    // or a command this Host does not have. Nothing was rewound: say so in the
-    // console instead of failing silently (SiriLee/dsh-rewind#26).
-    rewindLog.warn('refill', `rewind command rejected for @${seq}`, result.error)
-    return
-  }
-  if (result.value?.matched !== true) {
-    rewindLog.warn('refill', `rewind command was not matched for @${seq}`)
-    return
-  }
-  // The executed rewind lands as a CommandNode with a marker-carrying
-  // success outcome; wait for exactly that (longer than the preview route
-  // timeout: a running turn is cancelled first, which can take seconds).
-  let outcome: Awaited<ReturnType<typeof waitForCommand>>
-  try {
-    outcome = await waitForCommand(session, chatOf, node => isExecutedRewindCommand(node, seq) && !known.has(node.seq), 20_000, cb => watchChat(session.sessionId, cb))
-  } catch (error) {
-    rewindLog.warn('refill', `waiting for rewind @${seq} outcome threw`, error)
-    return
-  }
-  if (outcome === null) {
-    rewindLog.warn('refill', `rewind @${seq} never settled within timeout, no refill`)
-    return
-  }
-  if (outcome.kind !== 'success') {
-    // The host rejected the rewind (e.g. the target was shadowed by
-    // compaction and is no longer in the model context). The refusal is the
-    // correct behavior, but it must not fail silently — surface the host's
-    // reason instead.
-    showHint(outcome.text ?? 'rewind failed')
-    return
-  }
+  if (!await executeRewind(session, seq, mode, chatOf, watchChat)) return
   // The user may have switched sessions while the rewind ran — fill only
   // the composer of the session the rewind actually happened in.
   if (!isMainViewSession(session.sessionId)) {
@@ -216,6 +233,52 @@ export async function runRewindAndFill(
   } catch (error) {
     rewindLog.warn('refill', `composer refill @${seq} threw`, error)
     return
+  }
+}
+
+/** One animation frame, so the composer's model commits the draft we just wrote. */
+function nextFrame(): Promise<void> {
+  return new Promise<void>(resolve => {
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve())
+    else setTimeout(resolve, 0)
+  })
+}
+
+/**
+ * The edit half: withdraw every turn from `seq`, then send the edited text.
+ *
+ * The withdraw is the same `/rewind` command the ↶ action runs, so the host's
+ * admission (subagent refusal, shadowed target, running turn) applies unchanged
+ * and no second truncation mechanism exists in this plugin.
+ * @returns whether the edited text was handed to the composer and sent.
+ */
+export async function runEditAndResend(
+  session: SessionFace,
+  seq: number,
+  text: string,
+  mode: 'chat' | 'both',
+  isMainViewSession: (sessionId: string) => boolean,
+  setComposerText: (sessionId: string, text: string) => boolean,
+  submitComposer: (sessionId: string) => boolean,
+  chatOf: ChatOf,
+  watchChat: ChatWatch,
+): Promise<boolean> {
+  if (!await executeRewind(session, seq, mode, chatOf, watchChat)) return false
+  if (!isMainViewSession(session.sessionId)) return false
+  try {
+    if (!setComposerText(session.sessionId, text)) {
+      showHint('the composer did not accept the edited text')
+      return false
+    }
+    await nextFrame()
+    if (!submitComposer(session.sessionId)) {
+      showHint('could not send the edited message')
+      return false
+    }
+    return true
+  } catch (error) {
+    rewindLog.warn('refill', `edit send @${seq} threw`, error)
+    return false
   }
 }
 
