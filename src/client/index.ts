@@ -43,7 +43,7 @@ import { installRowAction, type RowAction, type SlotLedger } from './mount.tsx'
 import { rewindActionRenderer } from './action.tsx'
 import { createPendingBridge } from './pending-mount.tsx'
 import { isRewindInertSession, runEditAndResend, runRewindAndFill, writeComposer } from './rewind-flow.ts'
-import { chatSnapshotOf, resolveChatWatch, type ChatOf, type ChatWatch, type MessageImageRef } from './hidden.ts'
+import { chatSnapshotOf, messageTextAt, resolveChatWatch, type ChatOf, type ChatWatch, type MessageImageRef } from './hidden.ts'
 import { candidatesOverApi, previewOverApi } from './host-api.ts'
 import { rewindLog } from './log.ts'
 import { BUILD_HASH, PLUGIN_PACKAGE, PLUGIN_VERSION } from './build-info.ts'
@@ -534,11 +534,23 @@ export function apply(ctx: ClientContext): void {
         rewindLog.warn('action', 'edit action clicked with no session binding')
         return
       }
+      // The actions row's Copy text is the fast path, but a row can be built
+      // without it (the slot composes `text` only for the shipped actions). Fall
+      // back to the same snapshot read the refill uses, so the dialog always
+      // opens on the message itself instead of an empty box.
+      let preview = row.text
+      if (preview.trim() === '') {
+        try {
+          preview = messageTextAt(chatOf(face), row.seq) ?? ''
+        } catch (error) {
+          rewindLog.warn('action', 'reading the message text for the edit dialog threw', error)
+        }
+      }
       openEditPopover({
         session: face,
         seq: row.seq,
         time: row.time,
-        preview: row.text,
+        preview,
         anchor,
         placement: 'below',
         t,

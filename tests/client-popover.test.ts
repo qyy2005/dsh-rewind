@@ -273,32 +273,33 @@ describe('openEditPopover (edit and resend)', () => {
     return onEdit
   }
 
-  const field = (): HTMLTextAreaElement => document.querySelector<HTMLTextAreaElement>(`.${CLASS.editInput}`)!
-  const scopeButtons = (): HTMLButtonElement[] => Array.from(document.querySelectorAll<HTMLButtonElement>(`.${CLASS.editScope}`))
-  const primary = (): HTMLButtonElement => document.querySelector<HTMLButtonElement>(`.${CLASS.popoverPrimary}`)!
+  const field = (): HTMLTextAreaElement => document.querySelector<HTMLTextAreaElement>('.' + CLASS.editInput)!
+  const fileSwitch = (): HTMLButtonElement => document.querySelector<HTMLButtonElement>('.' + CLASS.editSwitch)!
+  const primary = (): HTMLButtonElement => document.querySelector<HTMLButtonElement>('.' + CLASS.popoverPrimary)!
 
-  it('opens with the message text and keeps the file scope locked without restorable changes', async () => {
+  it('opens with the message text and hides the file switch when nothing is restorable', async () => {
     openEditDialog(undefined, async () => ({ kind: 'success', files: [], backupOff: false }))
     expect(field().value).toBe('hello there')
-    expect(scopeButtons()[1]!.disabled).toBe(true)
+    expect(fileSwitch().hidden).toBe(true)
     await settle()
-    expect(document.querySelector(`.${CLASS.editFiles}`)?.textContent).toContain('edit.files.none')
-    expect(scopeButtons()[1]!.disabled).toBe(true)
+    expect(document.querySelector('.' + CLASS.editFiles)?.textContent).toContain('edit.files.none')
+    expect(fileSwitch().hidden).toBe(true)
   })
 
-  it('unlocks the file scope and lists the impact when the preview reports changes', async () => {
+  it('reveals the file switch and lists the impact when the preview reports changes', async () => {
     openEditDialog(undefined, async () => ({
       kind: 'success',
       files: [{ path: 'a.ts', action: 'restore' }, { path: 'b.ts', action: 'delete' }],
       backupOff: false,
     }))
     await settle()
-    expect(scopeButtons()[1]!.disabled).toBe(false)
-    expect(document.querySelector(`.${CLASS.editFiles}`)?.textContent).toContain('edit.files.count')
-    expect(document.querySelector(`.${CLASS.editFileList}`)?.textContent).toContain('popover.impact.restore:a.ts')
+    expect(fileSwitch().hidden).toBe(false)
+    expect(fileSwitch().getAttribute('aria-checked')).toBe('false')
+    expect(document.querySelector('.' + CLASS.editFiles)?.textContent).toContain('edit.files.count')
+    expect(document.querySelector('.' + CLASS.editFileList)?.textContent).toContain('a.ts')
   })
 
-  it('sends the edited text with the chosen scope and closes once it lands', async () => {
+  it('sends the edited text with the switch state and closes once it lands', async () => {
     const onEdit = vi.fn((_text: string, _withFiles: boolean): Promise<boolean> => Promise.resolve(true))
     openEditDialog(onEdit, async () => ({
       kind: 'success',
@@ -307,11 +308,12 @@ describe('openEditPopover (edit and resend)', () => {
     }))
     await settle()
     field().value = 'edited text'
-    scopeButtons()[1]!.click()
+    fileSwitch().click()
+    expect(fileSwitch().getAttribute('aria-checked')).toBe('true')
     primary().click()
     await settle()
     expect(onEdit).toHaveBeenCalledWith('edited text', true)
-    expect(document.querySelector(`.${CLASS.popover}`)).toBeNull()
+    expect(document.querySelector('.' + CLASS.popover)).toBeNull()
   })
 
   it('refuses an empty message without calling the host', () => {
@@ -320,7 +322,7 @@ describe('openEditPopover (edit and resend)', () => {
     field().value = '   '
     primary().click()
     expect(onEdit).not.toHaveBeenCalled()
-    expect(document.querySelector(`.${CLASS.editError}`)?.textContent).toBe('edit.empty')
+    expect(document.querySelector('.' + CLASS.editError)?.textContent).toBe('edit.empty')
   })
 
   it('keeps the dialog and the typed text when the host cannot send', async () => {
@@ -328,8 +330,8 @@ describe('openEditPopover (edit and resend)', () => {
     field().value = 'edited text'
     primary().click()
     await settle()
-    expect(document.querySelector(`.${CLASS.popover}`)).not.toBeNull()
+    expect(document.querySelector('.' + CLASS.popover)).not.toBeNull()
     expect(field().value).toBe('edited text')
-    expect(document.querySelector(`.${CLASS.editError}`)?.textContent).toBe('edit.sendFailed')
+    expect(document.querySelector('.' + CLASS.editError)?.textContent).toBe('edit.sendFailed')
   })
 })

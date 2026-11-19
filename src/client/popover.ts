@@ -589,6 +589,31 @@ export interface EditPopoverOptions {
   readonly onEdit: (text: string, withFiles: boolean) => Promise<boolean>
 }
 
+/** The restore glyph: a turn-back arrow, the same idea as the row's rewind action. */
+const RESTORE_GLYPH = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">'
+  + '<path d="M4.6 2.2 2.2 4.6l2.4 2.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />'
+  + '<path d="M2.2 4.6h4.3a3 3 0 0 1 3 3v1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>'
+
+/** The send glyph: an up arrow, the composition every chat composer already taught. */
+const SEND_GLYPH = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">'
+  + '<path d="M7 11V3.4M3.4 6.9 7 3.3l3.6 3.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>'
+
+/** The header mark: the same pencil the row action wears, at tile size. */
+const MARK_GLYPH = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
+  + '<path d="M9.6 3.1 12.9 6.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />'
+  + '<path d="M3 13.1v-2.7l7.3-7.3a1.55 1.55 0 0 1 2.2 0l.4.4a1.55 1.55 0 0 1 0 2.2L5.6 13.1H3z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" /></svg>'
+
+/** The notice glyph for the one line that explains what the action does. */
+const INFO_GLYPH = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">'
+  + '<circle cx="6" cy="6" r="4.6" stroke="currentColor" stroke-width="1.2" />'
+  + '<path d="M6 5.4v2.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />'
+  + '<circle cx="6" cy="3.7" r="0.65" fill="currentColor" /></svg>'
+
+/** The file glyph for the impact row. */
+const FILE_GLYPH = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">'
+  + '<path d="M3 1.8h3.6L9 4.2v6H3z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" />'
+  + '<path d="M6.4 1.9v2.4h2.4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" /></svg>'
+
 /** The close glyph (the dialog owns its own chrome; the row already says where). */
 const CLOSE_GLYPH = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">'
   + '<path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>'
@@ -625,8 +650,25 @@ export function openEditPopover(opts: EditPopoverOptions): void {
   close.setAttribute('aria-label', t('popover.cancel'))
   close.innerHTML = CLOSE_GLYPH
   close.addEventListener('click', () => closePopover())
-  header.append(el('div', CLASS.popoverTitle, t('edit.title')), close)
+  // The message's own clock reads as context, the way a quoted reply carries it;
+  // it also tells a user editing an older row which one they opened.
+  const clock = new Date(opts.time).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  const mark = el('span', CLASS.editMark)
+  mark.innerHTML = MARK_GLYPH
+  header.append(
+    mark,
+    el('div', CLASS.popoverTitle, t('edit.title')),
+    el('span', CLASS.editTime, clock),
+    close,
+  )
 
+  const hint = el('div', CLASS.editNote)
+  hint.innerHTML = INFO_GLYPH
+  hint.append(el('span', '', t('edit.hint')))
+
+  // The field: one filled well holding the composer text, so the caret has a
+  // surface without the panel wearing a border anywhere.
+  const field = el('div', CLASS.editField)
   const input = document.createElement('textarea')
   input.className = CLASS.editInput
   input.value = preview
@@ -634,45 +676,46 @@ export function openEditPopover(opts: EditPopoverOptions): void {
   input.spellcheck = false
   input.setAttribute('aria-label', t('edit.title'))
   input.addEventListener('input', () => autosize(input))
+  field.append(input)
 
-  // File scope: the rewind popover's two modes, compressed into one segmented
-  // control. Disabled until the preview says there is something to restore.
-  const scopes = el('div', CLASS.editScopes)
-  scopes.setAttribute('role', 'group')
+  // File restore: a chip in the composer's own toolbar, the way a composer
+  // carries its tools. It only appears once the preview reports something
+  // restorable — a control that cannot be turned on is decoration.
   let withFiles = false
-  const scopeButton = (label: string, pressed: boolean): HTMLButtonElement => {
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = CLASS.editScope
-    button.textContent = label
-    button.setAttribute('aria-pressed', String(pressed))
-    return button
-  }
-  const chatButton = scopeButton(t('edit.scope.chat'), true)
-  const bothButton = scopeButton(t('edit.scope.both'), false)
-  bothButton.disabled = true
-  const select = (files: boolean): void => {
-    withFiles = files
-    chatButton.setAttribute('aria-pressed', String(!files))
-    bothButton.setAttribute('aria-pressed', String(files))
-  }
-  chatButton.addEventListener('click', () => select(false))
-  bothButton.addEventListener('click', () => select(true))
-  scopes.append(chatButton, bothButton)
+  const fileSwitch = document.createElement('button')
+  fileSwitch.type = 'button'
+  fileSwitch.className = CLASS.editSwitch
+  fileSwitch.setAttribute('role', 'switch')
+  fileSwitch.setAttribute('aria-checked', 'false')
+  fileSwitch.setAttribute('aria-label', t('edit.files.toggle'))
+  fileSwitch.hidden = true
+  fileSwitch.innerHTML = RESTORE_GLYPH
+  const fileSwitchLabel = document.createElement('span')
+  fileSwitchLabel.textContent = t('edit.scope.both')
+  const fileSwitchCount = document.createElement('span')
+  fileSwitchCount.className = CLASS.editSwitchCount
+  fileSwitch.append(fileSwitchLabel, fileSwitchCount)
+  fileSwitch.addEventListener('click', () => {
+    withFiles = !withFiles
+    fileSwitch.setAttribute('aria-checked', String(withFiles))
+  })
 
   const files = document.createElement('details')
   files.className = CLASS.editFiles
   const filesSummary = document.createElement('summary')
-  filesSummary.textContent = t('edit.files.loading')
+  filesSummary.innerHTML = FILE_GLYPH
+  const filesSummaryText = el('span', '', t('edit.files.loading'))
+  filesSummary.append(filesSummaryText)
   files.append(filesSummary)
   const fileList = document.createElement('ul')
   fileList.className = CLASS.editFileList
 
   const error = el('div', CLASS.editError)
   error.hidden = true
-  const note = el('div', CLASS.editNote, t('edit.hint'))
 
-  const actions = el('div', CLASS.popoverActions)
+  // Footer: the chat-composer shape — a quiet cancel, then the send itself as a
+  // round primary the eye lands on.
+  const bar = el('div', CLASS.editBar)
   const cancel = document.createElement('button')
   cancel.type = 'button'
   cancel.className = CLASS.popoverGhost
@@ -680,21 +723,26 @@ export function openEditPopover(opts: EditPopoverOptions): void {
   cancel.addEventListener('click', () => closePopover())
   const submit = document.createElement('button')
   submit.type = 'button'
-  submit.className = CLASS.popoverPrimary
-  submit.textContent = t('edit.submit')
-  actions.append(cancel, submit)
+  submit.className = `${CLASS.popoverPrimary} ${CLASS.editSend}`
+  submit.setAttribute('aria-label', t('edit.submit'))
+  submit.setAttribute('title', t('edit.submit'))
+  submit.innerHTML = SEND_GLYPH
+  const chord = el('span', CLASS.editKbd, /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ ⏎' : 'Ctrl ⏎')
+  chord.setAttribute('aria-hidden', 'true')
+  bar.append(fileSwitch, el('div', CLASS.editSpacer), chord, cancel, submit)
 
-  root.append(header, input, scopes, files, note, error, actions)
+  root.append(header, hint, field, files, error, bar)
+
 
   /** Lock or unlock the dialog while one submit is in flight. */
   const busy = (sending: boolean): void => {
     input.readOnly = sending
     close.disabled = sending
     cancel.disabled = sending
-    chatButton.disabled = sending
-    bothButton.disabled = sending || bothButton.dataset['restorable'] !== 'true'
+    fileSwitch.disabled = sending
     submit.disabled = sending
-    submit.textContent = sending ? t('edit.sending') : t('edit.submit')
+    submit.setAttribute('aria-busy', String(sending))
+    submit.setAttribute('aria-label', sending ? t('edit.sending') : t('edit.submit'))
   }
 
   /** Surface one refusal above the footer without closing the dialog. */
@@ -758,28 +806,31 @@ export function openEditPopover(opts: EditPopoverOptions): void {
     const outcome = await previewImpact(session.sessionId, seq)
     if (!root.isConnected) return
     if (outcome === null) {
-      filesSummary.textContent = t('edit.files.failed', { message: 'preview request timed out' })
+      filesSummaryText.textContent = t('edit.files.failed', { message: 'preview request timed out' })
       return
     }
     if (outcome.kind === 'error') {
-      filesSummary.textContent = t('edit.files.failed', { message: outcome.text })
+      filesSummaryText.textContent = t('edit.files.failed', { message: outcome.text })
       return
     }
     if (outcome.files.length === 0) {
-      filesSummary.textContent = t('edit.files.none')
+      filesSummaryText.textContent = t('edit.files.none')
       return
     }
-    filesSummary.textContent = t('edit.files.count', { count: outcome.files.length })
-    fileList.replaceChildren(...outcome.files.map(file => el(
-      'li',
-      '',
-      file.action === 'restore' ? t('popover.impact.restore', { path: file.path }) : t('popover.impact.delete', { path: file.path }),
-    )))
+    filesSummaryText.textContent = t('edit.files.count', { count: outcome.files.length })
+    fileList.replaceChildren(...outcome.files.map((file) => {
+      const row = el('li', '')
+      row.append(
+        el('span', CLASS.editFilePath, file.path),
+        el('span', CLASS.editFileTag, file.action === 'restore' ? t('edit.tag.restore') : t('edit.tag.delete')),
+      )
+      return row
+    }))
     files.append(fileList)
     if (outcome.backupOff) files.append(el('div', CLASS.popoverNote, t('popover.backupDisabled')))
-    bothButton.dataset['restorable'] = 'true'
-    bothButton.disabled = false
+    fileSwitch.hidden = false
+    fileSwitchCount.textContent = String(outcome.files.length)
   })().catch(() => {
-    if (root.isConnected) filesSummary.textContent = t('edit.files.failed', { message: 'unexpected error' })
+    if (root.isConnected) filesSummaryText.textContent = t('edit.files.failed', { message: 'unexpected error' })
   })
 }
